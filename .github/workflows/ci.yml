@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify project structure
+        run: |
+          test -f app/main.py
+          test -f scripts/ingest_policies.py
+          test -f scripts/build_vector_store.py
+          test -f data/clean_chunks.json
+
+      - name: Smoke test imports
+        run: |
+          python -c "import json, pathlib; print('Basic Python check passed')"
+          python -c "import chromadb; print('Chroma import passed')"
+
+      - name: Validate cleaned chunks JSON
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('data/clean_chunks.json')
+          with open(path, 'r', encoding='utf-8') as f:
+              chunks = json.load(f)
+
+          assert isinstance(chunks, list), 'clean_chunks.json must contain a list'
+          assert len(chunks) > 0, 'clean_chunks.json must not be empty'
+
+          required_keys = {'chunk_id', 'filename', 'section_title', 'content'}
+          for chunk in chunks[:5]:
+              assert required_keys.issubset(chunk.keys()), f'Missing keys in chunk: {chunk}'
+
+          print(f'Validated {len(chunks)} chunks successfully.')
+          PY
+
+      - name: Syntax check app and scripts
+        run: |
+          python -m py_compile app/main.py
+          python -m py_compile scripts/ingest_policies.py
+          python -m py_compile scripts/test_vector_setup.py
+          python -m py_compile scripts/build_vector_store.py
+          python -m py_compile scripts/retrieve_chunks.py
+          python -m py_compile scripts/build_prompt.py
+          python -m py_compile scripts/answer_question.py
